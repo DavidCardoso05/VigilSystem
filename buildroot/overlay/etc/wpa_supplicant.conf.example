@@ -1,0 +1,11 @@
+# Copy to wpa_supplicant.conf (same folder; ignored by git) and fill in your network.
+# Tip: "wpa_passphrase <SSID> <password>" prints a psk= line so the plain password isn't stored.
+ctrl_interface=/var/run/wpa_supplicant
+update_config=0
+country=PT
+
+network={
+	ssid="YOUR_WIFI_NAME"
+	psk="YOUR_WIFI_PASSWORD"
+	key_mgmt=WPA-PSK
+}

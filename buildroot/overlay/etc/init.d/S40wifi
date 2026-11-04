@@ -1,0 +1,30 @@
+#!/bin/sh
+# Brings up Wi-Fi: load the brcmfmac driver, then start wpa_supplicant on wlan0.
+# dhcpcd (S41dhcpcd) gets the IP address once the link is up; chrony (S49) then sets the clock.
+
+CONF=/etc/wpa_supplicant.conf
+
+start() {
+	printf "Starting Wi-Fi: "
+	[ -f "$CONF" ] || { echo "no $CONF, skipped"; return 0; }
+	modprobe brcmfmac 2>/dev/null
+	# Wait up to 5 s for the interface to appear
+	i=0
+	while [ ! -d /sys/class/net/wlan0 ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i+1)); done
+	[ -d /sys/class/net/wlan0 ] || { echo "FAIL (no wlan0)"; return 1; }
+	wpa_supplicant -B -D nl80211 -i wlan0 -c "$CONF" -P /var/run/wpa_supplicant.pid \
+		&& echo "OK" || echo "FAIL"
+}
+
+stop() {
+	printf "Stopping Wi-Fi: "
+	[ -f /var/run/wpa_supplicant.pid ] && kill "$(cat /var/run/wpa_supplicant.pid)" 2>/dev/null
+	echo "OK"
+}
+
+case "$1" in
+	start) start ;;
+	stop) stop ;;
+	restart|reload) stop; sleep 1; start ;;
+	*) echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

@@ -1,0 +1,31 @@
+#!/bin/sh
+# Starts the VigilSystem application.
+# It starts right away, without waiting for NTP: the local alarm must never depend on the network.
+# Until the clock is synced the TLS handshake fails, and the network thread just retries with backoff.
+
+DAEMON=/usr/bin/vigil
+PIDFILE=/var/run/vigil.pid
+
+start() {
+	printf "Starting VigilSystem: "
+	[ -x "$DAEMON" ] || { echo "not installed yet ($DAEMON)"; return 0; }
+	start-stop-daemon -S -b -m -p "$PIDFILE" -x "$DAEMON" -- -c /etc/vigil/broker.conf \
+		&& echo "OK" || echo "FAIL"
+	# For the log only: report whether the clock is already synced
+	chronyc -n tracking 2>/dev/null | grep -q 'Leap status *: Normal' \
+		&& logger -t vigil "clock synced at start" \
+		|| logger -t vigil "clock not synced yet; MQTT will connect after NTP"
+}
+
+stop() {
+	printf "Stopping VigilSystem: "
+	start-stop-daemon -K -p "$PIDFILE" -s TERM 2>/dev/null; rm -f "$PIDFILE"
+	echo "OK"
+}
+
+case "$1" in
+	start) start ;;
+	stop) stop ;;
+	restart|reload) stop; sleep 1; start ;;
+	*) echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

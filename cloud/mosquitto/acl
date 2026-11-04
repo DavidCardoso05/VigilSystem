@@ -1,0 +1,19 @@
+# VigilSystem local test broker: same rules as EMQX (cloud/emqx/acl-rules.md).
+# Mosquitto denies anything not listed, so no explicit deny-all rule is needed.
+# "write" = publish, "read" = subscribe/receive.
+
+user vigil-device
+topic write vigil/home1/status
+topic write vigil/home1/alert
+topic write vigil/home1/event
+topic write vigil/home1/response
+topic write vigil/home1/connection
+topic read  vigil/home1/cmd
+
+user vigil-app
+topic write vigil/home1/cmd
+topic read  vigil/home1/status
+topic read  vigil/home1/alert
+topic read  vigil/home1/event
+topic read  vigil/home1/response
+topic read  vigil/home1/connection

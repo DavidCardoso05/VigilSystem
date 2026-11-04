@@ -1,0 +1,9 @@
+; Copy to broker.conf (ignored by git). Read by NetworkMQTTThread at startup.
+[broker]
+host        = xxxxxxxx.ala.eu-central-1.emqxsl.com   ; or the laptop's IP for the local Mosquitto
+port        = 8883
+ca_file     = /etc/ssl/certs/ca-certificates.crt      ; EMQX (public CA); use the test ca.crt for Mosquitto
+client_id   = vigil-device-home1
+username    = vigil-device
+secret_file = /etc/vigil/secrets/mqtt_pass            ; chmod 600
+keepalive_s = 30
