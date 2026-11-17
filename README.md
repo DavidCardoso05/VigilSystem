@@ -1,7 +1,17 @@
 # VigilSystem
 
 Home intrusion and fire alarm on a Raspberry Pi 4, with remote control from an Android app over MQTT 5/TLS (EMQX Serverless).
-Group 8 · ESRG Embedded Systems · David Cardoso (cloud + app) · Ana Sofia Cunha
+Group 8 · ESRG Embedded Systems · David Cardoso · Ana Sofia Cunha
+
+## Start here
+
+1. [`CLAUDE.md`](CLAUDE.md) — entry point, reading order and non-negotiable rules.
+2. [`VIGILSYSTEM_MASTER_CONTEXT.md`](VIGILSYSTEM_MASTER_CONTEXT.md) — the single source of truth for requirements, architecture and decisions.
+3. [`VIGILSYSTEM_GUIDELINES.md`](VIGILSYSTEM_GUIDELINES.md) — working rules, SOLID review, draw.io rules and the documentation maintenance procedure.
+
+If any other file disagrees with the Master Context, the Master Context wins. Never implement from `docs/archive/`.
+
+## Folders
 
 | Folder       | What goes there |
 |--------------|-----------------|
@@ -10,8 +20,6 @@ Group 8 · ESRG Embedded Systems · David Cardoso (cloud + app) · Ana Sofia Cun
 | `cloud/`     | Broker setup: `emqx/` (ACL rules, setup notes), `mosquitto/` (local test broker: conf, ACL, cert script), `samples/` (JSON messages for mosquitto_pub) |
 | `buildroot/` | Defconfig fragment (`configs/`) and root filesystem overlay (`overlay/`) |
 | `app/`       | Flutter app (Android) |
-| `docs/`      | Design presentation, broker-selection document, protocol notes |
+| `staging/`   | Laptop prototype of a superseded architecture, kept until it is refactored (Master Context §J.1) |
+| `docs/`      | Implementation Guide, hardware specification (`hardware/`), deck change plan (`presentation/`), design PDF and broker document (`design/`), superseded documents (`archive/`) |
 | `secrets/`   | Passwords and certificates. **Ignored by git, never commit it** |
-
-Design sources, in order of priority: `docs/design/G8_VigilSystem_D_Presentation.pdf`, then the broker-selection `.docx`.
-Today's plan: [NEXT_3_HOURS.md](NEXT_3_HOURS.md).

@@ -2,6 +2,36 @@
 
 Group 8 · David Cardoso (PG63873) · Ana Sofia Cunha (A107017) · MEEIC, Universidade do Minho (ESRG) · SEA + STR
 
+> **⚠ PARTLY SUPERSEDED — read this box first (added 2026-11-09).**
+> This guide was written on 4 Nov 2026 for a 9-thread architecture that the simplification review of 8–9 Nov replaced. The single source of truth is now **`VIGILSYSTEM_MASTER_CONTEXT.md` v1.0**; where this guide disagrees with it, the Master Context wins. Use only the sections marked *valid* or *mostly valid* below, and always apply the listed exceptions. A full rewrite (v2) is planned; until then this file is kept as it was, except for this box.
+>
+> | Guide section | Status | Use instead / exceptions |
+> |---|---|---|
+> | §0 How to use, §1 Summary, §2 Sources and precedence, §3 Repository layout | **Superseded** | `CLAUDE.md`; Master §0, §A, §B, Appendix A |
+> | §4 Hardware reference | **Mostly valid** | `docs/hardware/HARDWARE_CONTEXT.md` v2. Exceptions: RGB LED driven by NPN low-side switches, GPIO HIGH = on (DEC-007); IR inputs with Schottky + external 10 kΩ pull-up, bias disabled (DEC-007); no battery percentage, LOW_BATTERY at ≤ 6.7 V, safe state at ≤ 6.4 V (DEC-001, DEC-005a/b); no "PIR" naming (DEC-010) |
+> | §5 Software architecture | **Superseded** | Master §E.1–§E.3: 5 threads + `main`, 2 queues, packages `threads`/`logic`/`devices`/`hw`/`outputs`/`storage`/`net`/`core`. No epoll/eventfd/timerfd, no `IEventSink`, no SupervisorThread |
+> | §6 Behaviour specification | **Superseded** | Master §E.4 (FSM rules carried over and updated by the decisions) |
+> | §7 Component specifications | **Superseded** | Master §E.3, §E.7 |
+> | §8.1–§8.2 Driver decision and device-tree overlay | **Mostly valid** | Master §E.6. Exception: the driver plays step sequences (≤ 8 steps; 0 steps = stop) instead of fixed pattern IDs (DEC-002) |
+> | §8.3–§8.6 Driver UAPI, pattern tables, structure, tests | **Superseded** | Master §E.6 (DEC-002) |
+> | §9.1 Database files and settings, §9.4 PIN hash | **Mostly valid** | Master §E.5 |
+> | §9.2 Schema, §9.3 Statements, §9.5 Backup and recovery | **Superseded** | Master §E.5: 2 tables, `EVENT_LOG` with outbox columns `status`/`sent_at`, and `PIN_CONFIG`; no `PENDING_NOTIFICATION`; no backup or restore (DEC-001, DEC-006) |
+> | §10.1 Broker and ACL, §10.2 Connection parameters, §10.3 Topics, §10.9 Security notes | **Mostly valid** | Master §I.1–§I.3, §I.8. Exceptions: a planned stop closes the connection **without** DISCONNECT, so the broker publishes the Last Will at once (DEC-012, 12.1); topics are `vigil/<home_id>/…` and the users are per home, `vigil-device-<home_id>` / `vigil-app-<home_id>`, 12 rules per home + deny-all (DEC-015) |
+> | §10.4–§10.8, §10.10–§10.11 Payloads, PUBACK, validation, ordering, sync, detection bounds, samples | **Superseded** | Master §I.4–§I.6: no `battery_pct`, no `get_events`, no Wi-Fi loss ≤ 2 s |
+> | §11 Configuration files and secrets | **Mostly valid** | Master §E.8 for the parameter values; keys of removed features are not used. `vigil.conf` gains `home_id`; the Pi `client_id` and username are derived from it and are no longer keys of `broker.conf` (DEC-015) |
+> | §12 Buildroot and OS integration | **Mostly valid** | Exceptions in §12.2: IR line `gpio=16,20=ip,pn` (not `pu`); RGB line `gpio=4,19,26=op,dl` (not `dh`) — see `HARDWARE_CONTEXT.md` §13 |
+> | §13 Mobile app | **Superseded** | Master §I.7 (one home, `home_id` in `broker.json`, DEC-015) |
+> | §14 Error handling, §15 Parameters, §16 Testing, §17 Decision log, §18 Open issues, §19 Roadmap | **Superseded / obsolete** | Master §C.6, §E.8, §K, §G, §N, §M |
+> | §20 Conventions and working rules | **Superseded** | `VIGILSYSTEM_GUIDELINES.md` §6 |
+> | Appendix A Glossary | **Superseded** | Master Appendix B |
+>
+> Update 2026-11-14: every reference to `ALARM_SILENCED (INTRUSION)` is marked as removed (DEC-014, Master Context v1.2): stopping an intrusion alarm, at the keypad or from the app, logs only `DISARMED`.
+>
+> Update 2026-11-14: the Pi and the broker are ready for several homes and the app serves one home (DEC-015, Master Context v1.3). Where this guide writes `vigil/home1/…`, `vigil-device`, `vigil-app` or `client_id = vigil-device-home1`, read `vigil/<home_id>/…`, `vigil-device-<home_id>`, `vigil-app-<home_id>` and a `client_id` derived from `home_id` (`home1` in the implementation).
+>
+> Note: a second copy of this guide (Claude Project, 4 Nov) differs from this one in the RGB lines of §4.3 and §12.2; it is archived in `docs/archive/`. Neither copy's RGB text is current — use `HARDWARE_CONTEXT.md` v2.
+
+
 Compiled on 4 Nov 2026 from every design document of the project and from the full design deck (`docs/design/G8_VigilSystem_D_Presentation.pdf`, 61 slides). It is the single reference for implementing the system. It says **what** to build, **how** to build it, and **why** each decision was taken, so that an AI assistant (Claude) or a team member can implement any part without re-reading the slides.
 
 ---
@@ -520,7 +550,7 @@ All rules in this section are implemented in one pure class (`AlarmLogic`, no th
 | O-5 | EXIT_DELAY | `EVT_REMOTE_ARM` [fireState ≠ FIRE_ALARM] | stop exit timer, reply OK, ARMED (REMOTE) event, status ARMED | ARMED |
 | O-6 | ARMED | `EVT_MOTION_DETECTED` | start entry timer, WARNING tone, remember `entrySensor`. No notification, no log event | ENTRY_DELAY |
 | O-7 | ENTRY_DELAY | `EVT_ENTRY_DELAY_TIMEOUT` | INTRUSION tone, red LED flashing, INTRUSION_ALARM alert (details `IR1`/`IR2`), status | INTRUSION_ALARM |
-| O-8 | EXIT_DELAY, ARMED, ENTRY_DELAY, INTRUSION_ALARM | `EVT_PIN_CORRECT` (keypad) — **no fire guard** | stop exit/entry timers, stop tone, red LED off, DISARMED (LOCAL) event; from INTRUSION_ALARM also ALARM_SILENCED (INTRUSION) event; status | DISARMED |
+| O-8 | EXIT_DELAY, ARMED, ENTRY_DELAY, INTRUSION_ALARM | `EVT_PIN_CORRECT` (keypad) — **no fire guard** | stop exit/entry timers, stop tone, red LED off, DISARMED (LOCAL) event; ~~from INTRUSION_ALARM also ALARM_SILENCED (INTRUSION) event~~ (removed by DEC-014); status | DISARMED |
 | O-9 | same four states | `EVT_REMOTE_DISARM` [fireState ≠ FIRE_ALARM ∧ not locked out ∧ PIN valid] | stop timers, stop tone, red LED off, reply OK, DISARMED (REMOTE) event, status | DISARMED |
 | O-10 | any | `EVT_PIN_WRONG` | §6.6 (error feedback, WRONG_PIN, counter, maybe lockout) | unchanged |
 | O-11 | DISARMED, EXIT_DELAY | `EVT_MOTION_DETECTED` | ignored | — |
@@ -592,7 +622,7 @@ The local alarm never depends on the network state.
 2. Hash and compare. Wrong → BR-PIN-6/7, BR-PIN-2. Correct → reset the counter, raise `EVT_PIN_CORRECT`:
    - fireState = FIRE_ALARM → Fire FSM F-5 (→ SILENCED);
    - opState ≠ DISARMED → Operational O-8 (→ DISARMED);
-   - log in this order: DISARMED (LOCAL) [if opState changed] → ALARM_SILENCED (INTRUSION) [if it was INTRUSION_ALARM] → ALARM_SILENCED (FIRE) [if the fire alarm was silenced];
+   - log in this order: DISARMED (LOCAL) [if opState changed] → ~~ALARM_SILENCED (INTRUSION) [if it was INTRUSION_ALARM]~~ (removed by DEC-014) → ALARM_SILENCED (FIRE) [if the fire alarm was silenced];
    - if nothing was active (already DISARMED, no fire alarm): no event at all (issue 18), just a KEY_BEEP as acknowledgement.
 
 **Remote Arm (`handleRemoteArm`, slides 20/29) — no PIN:**
@@ -608,7 +638,7 @@ The local alarm never depends on the network state.
 3. Lockout → `LOCKED_OUT` (PIN not checked).
 4. PIN valid → reset counter, stop delay timers, DISARMED (this also silences an intrusion alarm), reply `OK`, DISARMED (REMOTE) event, status. PIN wrong → reply `INVALID_PIN`, WRONG_PIN (REMOTE), counter (5th → lockout + PIN_LOCKOUT (REMOTE)).
 
-A remote disarm of an intrusion alarm logs only DISARMED (REMOTE): the ALARM_SILENCED (INTRUSION) event is defined for the keypad (slide 26, wording kept on purpose).
+~~A remote disarm of an intrusion alarm logs only DISARMED (REMOTE): the ALARM_SILENCED (INTRUSION) event is defined for the keypad (slide 26, wording kept on purpose).~~ **DEC-014:** stopping an intrusion alarm, at the keypad or from the app, logs only DISARMED; ALARM_SILENCED (INTRUSION) no longer exists.
 
 **Change PIN (`handleChangePin`):**
 
@@ -701,7 +731,7 @@ Send `NetCmd::Status` whenever one of the first four fields changes. NetworkMQTT
 | DISARMED | event | no | `LOCAL` / `REMOTE` | valid PIN that leaves a non-disarmed state |
 | WRONG_PIN | event | no | `LOCAL` / `REMOTE` | each checked wrong PIN |
 | PIN_CHANGED | event | no | null | PIN change saved (the PIN is never logged) |
-| ALARM_SILENCED | event | no | `INTRUSION` | valid keypad PIN during an intrusion alarm, after DISARMED |
+| ~~ALARM_SILENCED~~ | ~~event~~ | ~~no~~ | ~~`INTRUSION`~~ | **Removed by DEC-014** (only DISARMED is logged) |
 | ALARM_SILENCED | **alert** | yes | `FIRE` | valid keypad PIN during a fire alarm |
 | INTRUSION_ALARM | alert | yes | `IR1` / `IR2` (default G4) | entry-delay timeout |
 | FIRE_ALARM | alert | yes | `DETECTED` / `REACTIVATED` | smoke in NORMAL / smoke at the silence timeout |
@@ -1195,7 +1225,7 @@ The second line is the Last Will: it has **no timestamp** because its payload is
 | `DISARMED` | `LOCAL` / `REMOTE` |
 | `WRONG_PIN` | `LOCAL` / `REMOTE` |
 | `PIN_CHANGED` | null |
-| `ALARM_SILENCED` | `INTRUSION` |
+| ~~`ALARM_SILENCED`~~ | ~~`INTRUSION`~~ (removed by DEC-014) |
 
 **Commands** (`cmd`, app → Pi, QoS 1, not retained, Message Expiry 30 s):
 
@@ -1249,7 +1279,7 @@ The second line is the Last Will: it has **no timestamp** because its payload is
 - After every CONNACK: subscribe `cmd` → `online` (retained) → full status (retained) → pending alerts, oldest first, ≤ 5/s (slides 21, 28, 30). The app shows the current state before older alerts arrive.
 - Remote command: response → log event → updated status (slide 29).
 - New alert: outbox row → publish alert → updated status (slide 28).
-- Both alarms silenced by one keypad PIN: DISARMED (`event`) → ALARM_SILENCED/INTRUSION (`event`) → ALARM_SILENCED/FIRE (`alert`) (slide 26).
+- Both alarms silenced by one keypad PIN: DISARMED (`event`) → ~~ALARM_SILENCED/INTRUSION (`event`)~~ (removed by DEC-014) → ALARM_SILENCED/FIRE (`alert`) (slide 26).
 - Alerts always leave in `event_id` order, live or resent.
 
 ### 10.8 Delivery guarantees and app sync
@@ -1527,7 +1557,7 @@ At most **20** items, ordered by `event_id`, newest first, grouped “Today” /
 | FIRE_ALARM (DETECTED) | Fire / gas alarm | Smoke detected by the MQ-2 sensor | `local_fire_department` | red | “Fire / gas alarm” – “Smoke or gas detected at home.” |
 | FIRE_ALARM (REACTIVATED) | Fire / gas still detected | Smoke persists after the silence period | `local_fire_department` | red | critical: “Fire / gas still detected” – “The fire alarm has been reactivated.” |
 | ALARM_SILENCED (FIRE) | Fire alarm silenced | Alarm silenced at the keypad | `notifications_off` | amber | yes |
-| ALARM_SILENCED (INTRUSION) | Intrusion alarm silenced | Alarm silenced at the keypad | `notifications_off` | grey | no (log event) |
+| ~~ALARM_SILENCED (INTRUSION)~~ | ~~Intrusion alarm silenced~~ | **Removed by DEC-014** | — | — | — |
 | HAZARD_CLEARED | Hazard cleared | No smoke detected after the silence period | `check_circle` | green | “Hazard cleared” – “No more smoke or gas detected.” |
 | POWER_LOST | Power outage | Running on battery (NN%) | `battery_alert` | amber | “Power outage” – “The system is running on battery (NN%).” |
 | POWER_RESTORED | Power restored | Back on mains power | `power` | green | “Power restored” – “The system is back on mains power.” |
@@ -1641,10 +1671,10 @@ A FAULT alert is sent **once per component** (per boot). All errors are also wri
 4. Remote Arm in DISARMED / EXIT_DELAY (cancels the timer) / ARMED / ENTRY_DELAY / INTRUSION_ALARM / FIRE_ALARM / SILENCED → OK / OK / ALREADY_ARMED ×3 / REJECTED_FIRE_ACTIVE / OK.
 5. Motion in DISARMED and EXIT_DELAY ignored; in ARMED → ENTRY_DELAY with WARNING, no notification.
 6. Entry timeout → INTRUSION_ALARM + alert (details IR1/IR2) + flashing LED.
-7. Keypad PIN in EXIT_DELAY / ENTRY_DELAY / INTRUSION_ALARM → DISARMED (+ ALARM_SILENCED INTRUSION only from INTRUSION_ALARM).
+7. Keypad PIN in EXIT_DELAY / ENTRY_DELAY / INTRUSION_ALARM → DISARMED ~~(+ ALARM_SILENCED INTRUSION only from INTRUSION_ALARM)~~ (removed by DEC-014: DISARMED only).
 8. Keypad PIN while already DISARMED with no alarm → no event (issue 18).
 9. Smoke in every operational state → FIRE_ALARM alert DETECTED, fire tone has priority over intrusion.
-10. Keypad PIN during fire alarm (armed) → SILENCED, DISARMED, events in the order DISARMED → ALARM_SILENCED(FIRE); with intrusion also active → DISARMED → ALARM_SILENCED(INTRUSION) → ALARM_SILENCED(FIRE).
+10. Keypad PIN during fire alarm (armed) → SILENCED, DISARMED, events in the order DISARMED → ALARM_SILENCED(FIRE); with intrusion also active → DISARMED → ~~ALARM_SILENCED(INTRUSION)~~ (removed by DEC-014) → ALARM_SILENCED(FIRE).
 11. Smoke during SILENCED ignored; silence timeout with smoke → FIRE_ALARM REACTIVATED (operational state unchanged); without smoke → NORMAL + HAZARD_CLEARED.
 12. Remote Disarm order: fire → REJECTED_FIRE_ACTIVE (no WRONG_PIN, counter unchanged); disarmed → ALREADY_DISARMED; lockout → LOCKED_OUT with remaining minutes; wrong → INVALID_PIN + WRONG_PIN(REMOTE); right → OK, DISARMED(REMOTE), timers stopped.
 13. Lockout: 5 wrong PINs mixing keypad and app → lockout + PIN_LOCKOUT(details = source of the 5th); during lockout nothing is hashed (keypad → error beep, remote → LOCKED_OUT), even during a fire alarm; counter reset by a valid PIN and at lockout end.
@@ -1722,7 +1752,7 @@ Local interface: lockout, PIN during lockout, lockout end, arm button during a f
 | D-38 | PENDING_NOTIFICATION with `UNIQUE(event_id)` | Enforces 1 : 0..1 and makes `markSent` fast |
 | D-39 | PIN_CONFIG single row (`CHECK id = 1`), `pbkdf2_sha256$<iterations>$<salt>$<hash>`, never published | A plain hash of a short PIN is reversed instantly from the SD card |
 | D-40 | Topic tree `vigil/home1/{status, connection, alert, event, response, cmd}`; status and connection retained | Retained state for new subscribers; one home per tree |
-| D-41 | Fire silenced is an **alert** (owner notified); intrusion silenced is a log event | The owner must know a fire alarm was silenced |
+| D-41 | Fire silenced is an **alert** (owner notified); ~~intrusion silenced is a log event~~ (removed by DEC-014: stopping an intrusion alarm logs only DISARMED) | The owner must know a fire alarm was silenced |
 | D-42 | Status fields `armed_state`, `fire_state`, `power_source`, `battery_pct` (10 % steps), `timestamp`; exit delay = DISARMED, entry delay = ARMED | Fewer messages; the FSM keeps both delay states internally |
 | D-43 | `online` with timestamp; clean `offline` with reason + timestamp; Last Will without timestamp | The Will payload is fixed at CONNECT |
 | D-44 | Reply sets per command (§10.4) | The app can be stale; the Pi always answers |
