@@ -62,3 +62,6 @@ buildroot/output/
 buildroot/overlay/etc/wpa_supplicant.conf
 buildroot/overlay/etc/vigil/secrets/
 Claude outputs/
+
+# --- Local Claude Code instructions (kept locally, not published) ---
+CLAUDE.md
