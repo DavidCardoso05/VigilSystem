@@ -5,9 +5,8 @@ Group 8 · ESRG Embedded Systems · David Cardoso · Ana Sofia Cunha
 
 ## Start here
 
-1. [`CLAUDE.md`](CLAUDE.md) — entry point, reading order and non-negotiable rules.
-2. [`VIGILSYSTEM_MASTER_CONTEXT.md`](VIGILSYSTEM_MASTER_CONTEXT.md) — the single source of truth for requirements, architecture and decisions.
-3. [`VIGILSYSTEM_GUIDELINES.md`](VIGILSYSTEM_GUIDELINES.md) — working rules, SOLID review, draw.io rules and the documentation maintenance procedure.
+1. [`VIGILSYSTEM_MASTER_CONTEXT.md`](VIGILSYSTEM_MASTER_CONTEXT.md) — the single source of truth for requirements, architecture and decisions.
+2. [`VIGILSYSTEM_GUIDELINES.md`](VIGILSYSTEM_GUIDELINES.md) — working rules, SOLID review, draw.io rules and the documentation maintenance procedure.
 
 If any other file disagrees with the Master Context, the Master Context wins. Never implement from `docs/archive/`.
 
