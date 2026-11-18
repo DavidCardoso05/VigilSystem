@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Document | `VIGILSYSTEM_MASTER_CONTEXT.md` — single source of truth (SSOT) for VigilSystem |
-| Version | **1.4** — 2026-11-14. v1.0 approved by David and distributed to the repository and the Claude Project; v1.1 adds DEC-013 (Phase 4 presentation decisions); v1.2 adds DEC-014 (intrusion `ALARM_SILENCED` event removed); v1.3 adds DEC-015 (Pi and broker ready for several homes, app for one home); v1.4 adds DEC-016 (app MQTT session handling), approved by David |
+| Version | **1.5** — 2026-11-18. v1.0 approved by David and distributed to the repository and the Claude Project; v1.1 adds DEC-013 (Phase 4 presentation decisions); v1.2 adds DEC-014 (intrusion `ALARM_SILENCED` event removed); v1.3 adds DEC-015 (Pi and broker ready for several homes, app for one home); v1.4 adds DEC-016 (app MQTT session handling); v1.5 adds DEC-017 (`CLAUDE.md` local only) and the work split by slice (§M.4), approved by David |
 | Last consolidation | 2026-11-09 |
 | Maintained by | Claude, only with explicit approval from David Cardoso (see §O and `VIGILSYSTEM_GUIDELINES.md`) |
 | Team | Group 8 — David Cardoso (PG63873), Ana Sofia Cunha (A107017) |
@@ -627,6 +627,7 @@ All decisions below were approved by David Cardoso in the conversation of 8–9 
 | DEC-014 | Intrusion `ALARM_SILENCED` log event | B — removed; `ALARM_SILENCED` exists only with details `FIRE` (alert) | Approved (14 Nov) |
 | DEC-015 | Readiness for several homes | B — Pi and broker ready for several homes (`home_id`, per-home users and ACL); app for one home; 15.1–15.7 | Approved (14 Nov) |
 | DEC-016 | App MQTT session handling | 16.1 A — the app subscribes after every CONNACK; 16.2 A — session expiry 7 days requested, the granted value is used | Approved (14 Nov) |
+| DEC-017 | `CLAUDE.md` in the repository | Local only — removed from git and ignored (commit `339cdf9`, 18 Nov); `README.md` is the repository entry point | Approved (18 Nov) |
 
 ### G.2 Decision records
 
@@ -1055,7 +1056,7 @@ TLS protects each hop separately; the broker can read `cmd` payloads, including 
 | Android app | **Not started** (`app/` empty) | A Figma Make prototype exists according to the GUI document **[UNVERIFIED: not in the repository]** |
 | Hardware | **Not assembled, not validated** | Owned: Pi, red LED, RGB LED, speaker, 2 IR, breadboard, microSD. Rest ordered the week of 9 Nov |
 | Design presentation | **88-slide deck (8 Nov) not yet updated** | Phase 4 decided (DEC-013); change plan v1.1 ready (`docs/presentation/DESIGN_DECK_CHANGES.md`, 71 slides); no slide edited yet |
-| Documentation | **Consolidated** (9 Nov; updated 14 Nov) | Master Context v1.3, Guidelines, `CLAUDE.md`, `README.md`, hardware specification v2, Guide validity box and `docs/archive/` in the repository; mirror under `VigilSystem/` in the Claude Project; old Project documents removed. The Project instructions and the global working rules (`PASTE_IN_TEXTS.md`) were pasted by David (confirmed 14 Nov) |
+| Documentation | **Consolidated** (9 Nov; updated 14 Nov) | Master Context v1.3, Guidelines, `CLAUDE.md` (local only since 18 Nov, DEC-017), `README.md`, hardware specification v2, Guide validity box and `docs/archive/` in the repository; mirror under `VigilSystem/` in the Claude Project; old Project documents removed. The Project instructions and the global working rules (`PASTE_IN_TEXTS.md`) were pasted by David (confirmed 14 Nov) |
 
 ### J.1 Discrepancies between code/documents and the approved design
 
@@ -1209,6 +1210,21 @@ Reported by David: SOLID is mandatory; no particular kind of driver is valued mo
 - Ask Ana to review DEC-001…DEC-013 and this document.
 - Re-plan the implementation milestones against the Gantt (implementation until ≈ 27 Dec 2026, verification ≈ 1–15 Jan 2027).
 
+### M.4 Work split by slice (18 Nov 2026)
+
+The implementation is built in vertical slices. Each slice ends at an integration point that both members test together. Recorded by David on 18 Nov 2026; **[OPEN]** Ana Sofia's confirmation is not recorded.
+
+| Slice | David | Ana | Integration point |
+|---|---|---|---|
+| 1 — Intrusion, no threads | `IntrusionFsm`, `AlarmLogic` (minimal) | `SimGpio`, `DebouncedInput`, `SimPwm`, `OutputPolicy`, `AlarmOutputs` | Together: simple loop in `main`. Door opens → intrusion tone |
+| 2 — Concurrency | `BlockingQueue<T>`, `WorkerThread`, `AlarmControllerThread` | `SafetySensorsThread` | 2 threads + EventQueue working |
+| 3 — Fire | `FireFsm` | MQ-2 in `DebouncedInput` (5 readings, warm-up); fire tone sequences | Smoke → `FIRE_ALARM`; fire has priority |
+| 4 — PIN and keypad | `PinGuard`, `PinHasher` | `KeypadScanner`, `PinEntry`, `LocalInputThread` | PIN on the keypad disarms; lockout |
+| 5 | **Persistence:** `Database`, `EventStore`, `PinStore`, `CommThread` | **Power** (formerly slice 7): `IPowerSensor` + simulated INA219, `PowerSupplyMonitor`, `PowerFsm`, `PowerMonitorThread`, RGB | Events stored; simulated power failures |
+| 6 | **MQTT:** `MqttLink`, `Protocol`, `OutboxPublisher`, broker configuration (DR-9) | **Real hardware:** real `GpioLines`, `PwmDevice`, `Ina219`; breadboard bring-up | Full system on the laptop (L2); real parts working on the Pi |
+| 7 — Robustness | `HealthMonitor`, `Watchdog`, `main` (composition root), SIGTERM | FAULT of each hardware component; degraded start-up on the hardware side | Watchdog and failures tested |
+| 8 | **Flutter app** and EMQX | Protoboard, enclosure, L3 tests, real-time measurements | Acceptance tests on the Pi with the app |
+
 ---
 
 ## N. Unresolved questions and uncertainty
@@ -1294,7 +1310,7 @@ Full rules in `VIGILSYSTEM_GUIDELINES.md` (project-specific) and in David's pers
 
 ```
 VigilSystem/                                  (repository = canonical copy; Claude Project mirrors it)
-├── CLAUDE.md                                 entry point and reading order
+├── CLAUDE.md                                 local only, not in git (DEC-017)
 ├── VIGILSYSTEM_MASTER_CONTEXT.md             this document (SSOT)
 ├── VIGILSYSTEM_GUIDELINES.md                 working rules, SOLID, draw.io, maintenance procedure
 └── docs/
@@ -1331,3 +1347,4 @@ VigilSystem/                                  (repository = canonical copy; Clau
 | 1.2 | 2026-11-14 | DEC-014 (intrusion `ALARM_SILENCED` log event removed): header, §0.3, §E.4, §G.1, §G.2, §G.3 (D-41), §H (row 25), §I.4, §J.1 (DR-8, resolved the same day: Implementation Guide and `DESIGN_DECK_CHANGES.md` updated for DEC-014) | David |
 | 1.3 | 2026-11-14 | DEC-015 (Pi and broker ready for several homes, app for one home): header, §0.3, §A.3, §B.7, §C.3, §E.3, §E.7, §E.8, §G.1, §G.2, §G.3 (D-20, D-40), §I.1–§I.3, §I.7, §I.8, §J.1 (DR-9, DR-10), §K.2 (AT-16), §L.5, §M.1, §N.1 (N-13), Appendix B. Implementation Guide validity box and `DESIGN_DECK_CHANGES.md` v1.3 updated in the same batch. Stale version references corrected the same day in §J (Documentation row: v1.1 → v1.3) and §L.4 (`DESIGN_DECK_CHANGES.md` v1.1 → v1.3); pasting of the Project instructions and global working rules marked done in §J, §J.1 (DR-5) and §M.1 (confirmed by David) | David |
 | 1.4 | 2026-11-14 | DEC-016 (app MQTT session handling: subscribe after every CONNACK; 7 days requested, granted value used): header, §0.3, §G.1, §G.2, §I.2, §I.5, §N.1 (N-14) | David |
+| 1.5 | 2026-11-18 | DEC-017 (`CLAUDE.md` removed from git, kept local): header, §G.1, §J (Documentation row), Appendix A. `README.md` and `VIGILSYSTEM_GUIDELINES.md` v1.2 updated in the same batch. New §M.4 (work split by slice between David and Ana) | David |

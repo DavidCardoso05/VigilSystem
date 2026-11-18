@@ -3,10 +3,10 @@
 | Field | Value |
 |---|---|
 | Document | `VIGILSYSTEM_GUIDELINES.md` — how Claude and the team work on VigilSystem |
-| Version | **1.1** — 2026-11-09 (v1.0 approved by David; v1.1 updates §7 for DEC-013, approved by David) |
-| Date | 2026-11-09 |
+| Version | **1.2** — 2026-11-18 (v1.0 approved by David; v1.1 updates §7 for DEC-013; v1.2 marks `CLAUDE.md` as local only for DEC-017; approved by David) |
+| Date | 2026-11-18 |
 | Scope | Project-specific rules. Reusable rules for every conversation live in David's personal preferences in Claude (global working rules) |
-| Related | `VIGILSYSTEM_MASTER_CONTEXT.md` (what the system is and why); `CLAUDE.md` (entry point) |
+| Related | `VIGILSYSTEM_MASTER_CONTEXT.md` (what the system is and why); `CLAUDE.md` (local entry point for Claude Code, not in the repository) |
 
 ---
 
@@ -131,7 +131,7 @@ Never claim in slides, report or code comments what the code does not do. In par
 |---|---|---|
 | `VIGILSYSTEM_MASTER_CONTEXT.md` | Current approved state + decision history | Any approved decision, status change or new evidence |
 | `VIGILSYSTEM_GUIDELINES.md` | Working rules | A rule changes |
-| `CLAUDE.md` | Entry point | The reading order or the document map changes |
+| `CLAUDE.md` | Entry point for Claude Code (local file, ignored by git) | The reading order or the document map changes |
 | `docs/IMPLEMENTATION_GUIDE.md` | Detailed specification | The detail of a decided design is written or changes |
 | `docs/hardware/HARDWARE_CONTEXT.md` | Hardware specification | Hardware decision or measurement |
 | `docs/presentation/DESIGN_DECK_CHANGES.md` | Deck change plan | Presentation decisions |
