@@ -20,12 +20,13 @@ Archived on 2026-11-09 (Master Context v1.0 consolidation). Each file starts wit
 | [`2026-11-02_Diagrams_Work_Log_and_Rationale.md`](2026-11-02_Diagrams_Work_Log_and_Rationale.md) | `VigilSystem – Design-Phase Diagrams Work Log and Rationale.md` | 2 Nov 2026 | FSM and flowchart work log; open issues 1–28 | Master Context §E.4, §G |
 | [`2026-10-31_Mobile_App_GUI_Design.md`](2026-10-31_Mobile_App_GUI_Design.md) | `VigilSystem_Mobile_App_GUI_Design.md` | 31 Oct 2026 | GUI decisions, Figma Make prototype, Flutter plan | Master Context §I.7 |
 | [`2026-10-31_Hardware_Context_v1.md`](2026-10-31_Hardware_Context_v1.md) | `VigilSystem_Hardware_Context.md` | 31 Oct 2026 | Hardware decisions of the design-phase review (version 1) | `docs/hardware/HARDWARE_CONTEXT.md` v2.0 |
+| [`2026-11-03_G8_VigilSystem_D_Presentation_61_slides.pdf`](2026-11-03_G8_VigilSystem_D_Presentation_61_slides.pdf) | Repository `docs/design/G8_VigilSystem_D_Presentation.pdf` (archived 2026-11-17; PDF, so no ARCHIVED box) | 3 Nov 2026 | PDF export of the 61-slide design deck | `docs/design/G8_VigilSystem_D_Presentation.pdf` (82 slides, 17 Nov) |
 | [`2026-10-25_MQTT_Broker_Selection.md`](2026-10-25_MQTT_Broker_Selection.md) | `VigilSystem – MQTT Broker Selection EMQX Serverless and Mosquitto Test Broker.md` | 25 Oct 2026 | Broker comparison and selection of EMQX Serverless; Mosquitto as test broker | Master Context §I.1–§I.2 (the broker choice itself is still valid) |
 
 Not copied here:
 
-- The old `CLAUDE.md` (4 Nov) is in the git history (commit of 4 Nov) and in the git-ignored folder `Claude outputs/`.
+- The old `CLAUDE.md` (4 Nov) is in the git history (commit of 4 Nov) and in `~/VigilSystem-old-claude-outputs/`, outside the repository (moved there from `Claude outputs/` on 2026-11-17).
 - The repository copy of the Implementation Guide stays at `docs/IMPLEMENTATION_GUIDE.md` with a validity box, because some of its sections are still valid.
-- The decks (`.pptx`) are not archived here; the design deck PDF stays in `docs/design/`.
+- The decks (`.pptx`) are not archived here; the current design deck PDF stays in `docs/design/`.
 
 Whether the original documents are also removed from the Claude Project is a separate decision for David.

@@ -1,0 +1,10 @@
+; Local Mosquitto test broker (cloud/mosquitto/). Copy to pi/config/broker.conf (git-ignored)
+; and run vigil from the repository root so the relative paths work.
+[broker]
+host        = localhost
+port        = 8883
+ca_file     = cloud/mosquitto/certs/ca.crt
+client_id   = vigil-device-home1
+username    = vigil-device
+secret_file = secrets/local-vigil-device.pass
+keepalive_s = 30
