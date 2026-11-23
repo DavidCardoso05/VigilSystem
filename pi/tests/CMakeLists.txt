@@ -13,7 +13,9 @@ endif()
 
 include(GoogleTest)
 
-add_executable(vigil_tests test_smoke.cpp)
+add_executable(vigil_tests
+  test_core_types.cpp
+  test_intrusion_fsm.cpp)
 target_compile_options(vigil_tests PRIVATE -Wall -Wextra -Wpedantic)
-target_link_libraries(vigil_tests PRIVATE GTest::gtest_main)
+target_link_libraries(vigil_tests PRIVATE vigil_core GTest::gtest_main)
 gtest_discover_tests(vigil_tests)

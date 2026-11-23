@@ -27,12 +27,18 @@ endif()
 
 find_package(Threads REQUIRED)
 
+# Application library: everything except main(). Sources listed explicitly.
+add_library(vigil_core STATIC
+  src/logic/IntrusionFsm.cpp)
+target_include_directories(vigil_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(vigil_core PRIVATE -Wall -Wextra -Wpedantic)
+
 add_executable(vigil src/main.cpp)
 target_compile_options(vigil PRIVATE -Wall -Wextra -Wpedantic)
 target_compile_definitions(vigil PRIVATE
   VIGIL_SIM=$<BOOL:${VIGIL_SIM}>
   VIGIL_VERSION="${PROJECT_VERSION}")
-target_link_libraries(vigil PRIVATE Threads::Threads)
+target_link_libraries(vigil PRIVATE vigil_core Threads::Threads)
 install(TARGETS vigil RUNTIME DESTINATION bin)
 
 if(VIGIL_BUILD_TESTS)
