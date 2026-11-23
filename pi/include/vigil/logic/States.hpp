@@ -18,6 +18,10 @@ enum class NetworkState : std::uint8_t { NET_LOST, NET_CONNECTED };
 // One-shot local feedback requested by a transition (played by the outputs).
 enum class Feedback : std::uint8_t { NONE, KEY_BEEP, ERROR_BEEP, WRONG_PIN_BLINK };
 
+enum class FireState : std::uint8_t { NORMAL, FIRE_ALARM, SILENCED };
+
+enum class PowerSource : std::uint8_t { GRID, BATTERY };
+
 // Everything OutputPolicy needs to compute the desired outputs.
 struct OutputInputs {
     IntrusionState intrusion;
