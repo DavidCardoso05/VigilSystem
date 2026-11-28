@@ -29,9 +29,14 @@ find_package(Threads REQUIRED)
 
 # Application library: everything except main(). Sources listed explicitly.
 add_library(vigil_core STATIC
-  src/logic/IntrusionFsm.cpp)
+  src/devices/DebouncedInput.cpp
+  src/logic/AlarmLogic.cpp
+  src/logic/IntrusionFsm.cpp
+  src/logic/OutputPolicy.cpp
+  src/outputs/AlarmOutputs.cpp)
 target_include_directories(vigil_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(vigil_core PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(vigil_core PUBLIC Threads::Threads)  # core/BlockingQueue uses pthreads
 
 add_executable(vigil src/main.cpp)
 target_compile_options(vigil PRIVATE -Wall -Wextra -Wpedantic)

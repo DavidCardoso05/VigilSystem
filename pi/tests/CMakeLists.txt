@@ -14,6 +14,8 @@ endif()
 include(GoogleTest)
 
 add_executable(vigil_tests
+  test_alarm_logic.cpp
+  test_blocking_queue.cpp
   test_core_types.cpp
   test_intrusion_fsm.cpp)
 target_compile_options(vigil_tests PRIVATE -Wall -Wextra -Wpedantic)

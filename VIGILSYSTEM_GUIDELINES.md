@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Document | `VIGILSYSTEM_GUIDELINES.md` — how Claude and the team work on VigilSystem |
-| Version | **1.2** — 2026-11-18 (v1.0 approved by David; v1.1 updates §7 for DEC-013; v1.2 marks `CLAUDE.md` as local only for DEC-017; approved by David) |
-| Date | 2026-11-18 |
+| Version | **1.3** — 2026-11-28 (v1.0 approved by David; v1.1 updates §7 for DEC-013; v1.2 marks `CLAUDE.md` as local only for DEC-017; v1.3 adds the code style and comment rules to §6 and the queue rules of DEC-018; approved by David) |
+| Date | 2026-11-28 |
 | Scope | Project-specific rules. Reusable rules for every conversation live in David's personal preferences in Claude (global working rules) |
 | Related | `VIGILSYSTEM_MASTER_CONTEXT.md` (what the system is and why); `CLAUDE.md` (local entry point for Claude Code, not in the repository) |
 
@@ -168,9 +168,12 @@ A superseded document is moved to `docs/archive/` with this banner at the top, a
 - Errors: expected device errors are reported as FAULT events (once per component); unexpected errors are caught in `WorkerThread::run()`, logged, and end in a watchdog reset; no exception crosses a thread boundary.
 - `syslog()` with ident `vigil`; never log a PIN, a password or a `cmd` payload.
 - SQLite: prepared statements only; times in ISO 8601 UTC text.
-- Real time: SCHED_FIFO threads use absolute-time periodic sleeps (`CLOCK_MONOTONIC`); all blocking waits have a timeout; PI mutexes on shared queues.
+- Real time: SCHED_FIFO threads use absolute-time periodic sleeps (`CLOCK_MONOTONIC`); all blocking waits have a timeout, given as an absolute deadline; PI mutexes on shared queues; condition variables are signalled while the mutex is held; producers never block on a queue (`tryPush`, the loss is counted and logged) (DEC-018).
+- Every pthread return code is checked: a failure throws `std::system_error`, except in a destructor, where it is logged and the process aborts.
 - Every logic change comes with L1 tests; every hardware wrapper has a simulated implementation and passes the same contract tests.
 - Build modes: `VIGIL_SIM=ON` (laptop), `VIGIL_TARGET=ON` (Pi, cross-compiled with the Buildroot toolchain).
+- Code style: 4 spaces, no tabs; braces on the same line; `#pragma once`; standard headers before project headers (`"vigil/…"`); `PascalCase` types, `camelCase` functions and variables, members with a trailing `_`, enum values in capitals, constants prefixed with `k`. **No indentation inside a `namespace`**; a namespace closes with `}  // namespace vigil`; `public:` / `private:` are aligned with `class`.
+- Code comments are in English and explain **why** where it is not obvious, plus the contract of each public function. They do not cite sections of the Master Context or the Guidelines, or DEC numbers: those references change and go stale; the reasons belong in the comment itself. Files written before 28 Nov 2026 keep their existing references until they are next changed.
 
 ---
 

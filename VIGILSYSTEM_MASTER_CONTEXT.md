@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Document | `VIGILSYSTEM_MASTER_CONTEXT.md` — single source of truth (SSOT) for VigilSystem |
-| Version | **1.5** — 2026-11-18. v1.0 approved by David and distributed to the repository and the Claude Project; v1.1 adds DEC-013 (Phase 4 presentation decisions); v1.2 adds DEC-014 (intrusion `ALARM_SILENCED` event removed); v1.3 adds DEC-015 (Pi and broker ready for several homes, app for one home); v1.4 adds DEC-016 (app MQTT session handling); v1.5 adds DEC-017 (`CLAUDE.md` local only) and the work split by slice (§M.4), approved by David |
+| Version | **1.7** — 2026-11-28. v1.0 approved by David and distributed to the repository and the Claude Project; v1.1 adds DEC-013 (Phase 4 presentation decisions); v1.2 adds DEC-014 (intrusion `ALARM_SILENCED` event removed); v1.3 adds DEC-015 (Pi and broker ready for several homes, app for one home); v1.4 adds DEC-016 (app MQTT session handling); v1.5 adds DEC-017 (`CLAUDE.md` local only) and the work split by slice (§M.4); v1.6 adds DEC-018 (`BlockingQueue` contract and implementation) and the implementation status of 28 Nov; v1.7 adds DEC-019 (`AlarmLogic` contract, slice 1) and the `OutputPolicy` fix, approved by David |
 | Last consolidation | 2026-11-09 |
 | Maintained by | Claude, only with explicit approval from David Cardoso (see §O and `VIGILSYSTEM_GUIDELINES.md`) |
 | Team | Group 8 — David Cardoso (PG63873), Ana Sofia Cunha (A107017) |
@@ -46,7 +46,7 @@ Mandatory course requirements (§B.1) rank above every design decision. A confli
 ### 0.3 Rules for future conversations
 
 - Before proposing any architectural change, read §C, §E, §G and §N. Settled decisions are reopened only for a **new** problem, and only with David's authorization.
-- Decision identifiers: `DEC-001…DEC-012` (simplification review and consolidation, 8–9 Nov 2026); `D-01…D-51` (earlier design decisions, status in §G.3). DEC-013 (presentation, 9 Nov), DEC-014, DEC-015 and DEC-016 (14 Nov) followed. New decisions continue at `DEC-017`.
+- Decision identifiers: `DEC-001…DEC-012` (simplification review and consolidation, 8–9 Nov 2026); `D-01…D-51` (earlier design decisions, status in §G.3). DEC-013 (presentation, 9 Nov), DEC-014, DEC-015 and DEC-016 (14 Nov), DEC-017 (18 Nov), DEC-018 and DEC-019 (28 Nov) followed. New decisions continue at `DEC-020`.
 - Slide numbers refer to the **88-slide Design deck of 8 Nov 2026** unless stated otherwise (see §L.4: the deck stored in the Claude Project is an older 61-slide version).
 
 ### 0.4 Sources reviewed for this consolidation
@@ -251,7 +251,7 @@ Five threads plus `main`: `LocalInputThread` (15 ms), `SafetySensorsThread` (100
 
 ### C.5 State management
 
-- All system state (intrusion, fire, power, network, lockout, deadlines) lives in **`AlarmLogic`**, owned by `AlarmControllerThread`. It is pure: no threads, no I/O, time injected.
+- All system state (intrusion, fire, power, network, lockout, deadlines) lives in **`AlarmLogic`**, owned by `AlarmControllerThread`. It is pure: no threads, no I/O, time injected. The only exception is the end of a beep played over the warning, which `AlarmOutputs` holds because it knows the tone durations (DEC-019).
 - Every domain object belongs to exactly one thread; only the two queues are shared.
 - Persistent state: `EVENT_LOG` (events + outbox state) and `PIN_CONFIG`. At boot, `main` reads the last `ARMED`/`DISARMED` event (by `id`) and injects the initial intrusion state (DEC-004, 4.1 b).
 
@@ -398,8 +398,9 @@ One C++17 process, `/usr/bin/vigil`, started by `/etc/init.d/S99vigil` as root (
 
 ### E.2 Queues and synchronisation
 
-- **EventQueue** (all threads → `AlarmControllerThread`) and **CommQueue** (controller and Paho callbacks → `CommThread`) are instances of `BlockingQueue<T>`: fixed capacity, `pthread_mutex` with `PTHREAD_PRIO_INHERIT`, `pthread_cond` on `CLOCK_MONOTONIC` (`pthread_condattr_setclock`), all inside the queue class.
-- **Deadline-based waiting (approved mechanism).** The exit delay, entry delay, silence period, lockout and "restore the warning after a beep" are deadlines held as state in `AlarmLogic`, with time injected. The controller waits on the EventQueue until the nearest deadline, at most 1 s (so it can send its heartbeat). This replaces epoll + eventfd + 4 timerfds and keeps immunity to NTP clock steps.
+- **EventQueue** (all threads → `AlarmControllerThread`) and **CommQueue** (controller and Paho callbacks → `CommThread`) are instances of `BlockingQueue<T>`: fixed capacity, `pthread_mutex` with `PTHREAD_PRIO_INHERIT`, `pthread_cond` on `CLOCK_MONOTONIC` (`pthread_condattr_setclock`), all inside the queue class (DEC-018).
+- **Queue contract (DEC-018).** The capacity is given to the constructor, and the ring buffer is allocated there once. `tryPush()` never blocks: when the queue is full or closed it returns `false`, the new item is not stored, and the caller counts the loss and logs it. `popUntil(deadline)` waits until an item arrives, the absolute monotonic deadline passes or the queue is closed; `tryPop()` never waits and is used to drain the queue. Both return `std::optional<T>`. `close()` wakes every waiter and refuses later pushes, but the items already queued can still be taken, so the last events before a clean stop still reach `EVENT_LOG`. A consumer must treat "closed and empty" as a stop request. `closed()`, `capacity()` and `highWater()` (the peak number of queued items, for the capacity margin) are the only queries. The condition variable is signalled while the mutex is held, so a low-priority producer cannot leave an item queued with the consumer still asleep. Every pthread call is checked: a failure throws `std::system_error` (WorkerThread error policy), and a failed unlock aborts after a syslog entry.
+- **Deadline-based waiting (approved mechanism).** The exit delay, entry delay, silence period and lockout are deadlines held as state in `AlarmLogic`, with time injected (`nextDeadline()`). "Restore the warning after a beep" is held by `AlarmOutputs` (`nextRestore()`), which knows the tone durations (DEC-019). The controller waits on the EventQueue until the nearest of the two, at most 1 s (so it can send its heartbeat). This replaces epoll + eventfd + 4 timerfds and keeps immunity to NTP clock steps.
 - Each domain object belongs to one thread; only the two queues are shared. No dynamic allocation in the real-time loops.
 - `Event` and `CommCommand` are small value types; `CommCommand` is a `std::variant` of small structs (replaces the former union-like `OutputCmd`/`StorageCmd`/`NetCmd`).
 
@@ -470,7 +471,7 @@ About 35 types in total. Fallback **B−** (`AlarmLogic` as one class, ≈ 30 ty
 
 **Output arbitration** (`OutputPolicy`, recomputed after every event): speaker base = fire > intrusion > entry warning > off; key and error beeps are dropped while a fire or intrusion tone sounds and are played over the warning, after which the warning is restored through a deadline (DEC-002). Red LED = flashing during any alarm, on in EXIT_DELAY/ARMED/ENTRY_DELAY, off otherwise; the wrong-PIN blink is dropped while flashing. RGB = green (mains, connected), yellow (mains, lost), blue (battery, connected), magenta (battery, lost); pure red is reserved for the red LED; no fault blink (DEC-001).
 
-**Status snapshot** (published retained on every change, never periodically): `armed_state` = DISARMED (DISARMED, EXIT_DELAY) / ARMED (ARMED, ENTRY_DELAY) / INTRUSION_ALARM; `fire_state` = NORMAL / FIRE_ALARM / SILENCED; `power_source` = GRID / BATTERY; `timestamp`. No `battery_pct` (DEC-001).
+**Status snapshot** (published retained on every change, never periodically): `armed_state` = DISARMED (DISARMED, EXIT_DELAY) / ARMED (ARMED, ENTRY_DELAY) / INTRUSION_ALARM; `fire_state` = NORMAL / FIRE_ALARM / SILENCED; `power_source` = GRID / BATTERY; `timestamp`. No `battery_pct` (DEC-001). `AlarmLogic` compares the snapshot with the last one sent and also emits it once after boot, so a stale retained status is replaced after a reboot (DEC-019).
 
 ### E.5 Data persistence (DEC-006)
 
@@ -628,6 +629,8 @@ All decisions below were approved by David Cardoso in the conversation of 8–9 
 | DEC-015 | Readiness for several homes | B — Pi and broker ready for several homes (`home_id`, per-home users and ACL); app for one home; 15.1–15.7 | Approved (14 Nov) |
 | DEC-016 | App MQTT session handling | 16.1 A — the app subscribes after every CONNACK; 16.2 A — session expiry 7 days requested, the granted value is used | Approved (14 Nov) |
 | DEC-017 | `CLAUDE.md` in the repository | Local only — removed from git and ignored (commit `339cdf9`, 18 Nov); `README.md` is the repository entry point | Approved (18 Nov) |
+| DEC-018 | `BlockingQueue` contract and implementation | pthread primitives inside the queue; capacity in the constructor; non-blocking `tryPush`; `popUntil` + `tryPop`; `close()` drains; signal under the mutex; every pthread error checked | Approved (28 Nov) |
+| DEC-019 | `AlarmLogic` contract (slice 1) | One `handle(event, now)`; returns outputs + commands; status published when the snapshot changes and once after boot; beep-restore deadline held by `AlarmOutputs`; replies postponed to slice 6 | Approved (28 Nov) |
 
 ### G.2 Decision records
 
@@ -850,6 +853,55 @@ All decisions below were approved by David Cardoso in the conversation of 8–9 
 - **Affected.** §G.1, §I.2, §I.5, §N.1 (N-14).
 - **Sources.** Conversation of 14 Nov 2026 (sequence diagram review; EMQX Cloud documentation on persistent sessions, offline message queues and session expiry, consulted 14 Nov 2026).
 
+#### DEC-018 — `BlockingQueue` contract and implementation
+
+- **Problem.** §E.2 fixed the queue's mechanisms (PI mutex, monotonic condition variable, fixed capacity) but not its contract: what happens when the queue is full, how a consumer waits and drains, how threads stop, how errors are reported. The 23 Nov prototype outside the repository (`~/Embedded`, DR-11) also signalled after unlocking and offered relative waits.
+- **Current solution.** §E.2 bullet 1 only; the repository file was an unfinished draft (commit `922964f`).
+- **Decision (David, 28 Nov 2026, choice by choice)** — Status: approved.
+
+  | # | Topic | Choice | Main reason / rejected alternatives |
+  |---|---|---|---|
+  | 1 | Primitives | Raw `pthread_mutex_t` (`PTHREAD_PRIO_INHERIT`) and `pthread_cond_t` (`CLOCK_MONOTONIC`) inside the queue | Only option that meets §E.2 with no extra types. Rejected: `PiMutex`/condvar wrappers (+2 types for one user; `std::condition_variable_any` holds an internal mutex without PI); `std::mutex` (no PI) |
+  | 2 | Capacity | Constructor argument; `std::vector` resized once | Keeps the name `BlockingQueue<T>`; the size stays out of the threads' signatures. Rejected: `BlockingQueue<T, N>` |
+  | 3 | Full queue | `tryPush()` returns `false`; the new item is lost; nothing changes in the queue | Constant time; the alarm never waits for the SD card (§C.7); in a burst the first event is usually the cause. Rejected: blocking push with timeout (PI does not cover a wait on a condition variable); overwriting the oldest (loses the cause, leaves gaps in the log) |
+  | 4 | Pop result | `std::optional<T>` | No stale item outside the `if`. Rejected: `bool` + output parameter; result enum |
+  | 5 | Pop functions | `popUntil(Time)` and `tryPop()` only | Every function has a product user; absolute deadlines avoid drift. `popFor` moved to a test helper |
+  | 6 | Clean stop | `close()`: wakes waiters, refuses pushes, lets the queue drain | The last `DISARMED` before a stop reaches `EVENT_LOG`, so the restored state is right. Rejected: no `close()` (up to 1 s per consumer, items forgotten); `close()` that discards |
+  | 7 | Queries | `closed()`, `capacity()`, `highWater()`; no `size()` | Only answers that cannot go stale dangerously. `highWater()` measures the capacity margin |
+  | 8 | Errors | Every pthread return code checked; `std::system_error`; failed unlock → syslog + `abort()` | Fail-loud, consistent with DEC-004 4.2 b; `ENOTSUP` (no PI in the C library) found at the first start |
+  | 9 | File layout | One header: class first, definitions after | Template code must be visible where it is used |
+  | 10 | Locking | Private RAII class `Lock` | Unlocks on every exit path, including exceptions |
+  | 11 | Signal | `pthread_cond_signal` / `broadcast` with the mutex held | A low-priority producer (`CommThread`) preempted between unlock and signal would leave the consumer asleep; POSIX recommends it for predictable scheduling. Cost ≈ 5–10 µs of context switches in the worst case |
+  | 12 | Time conversion | `toTimespec()` in `core/PosixTime.hpp` | One implementation for the queue and the periodic threads; `Time.hpp` stays free of OS headers |
+  | 13 | Tests | 20 L1 tests; ThreadSanitizer; 20× repetition | PI and the condition-variable clock cannot be queried after creation: they are guaranteed by the constructor checks |
+
+- **SOLID.** S: the queue only hands items over; the meaning of a lost item (history vs latest status) is handled by its producer. I: small interface (7 public functions). D: preserved; `logic` does not include the queue. No new interface types.
+- **Consequences.** Producers must handle `false` (counter + syslog). `AlarmControllerThread` must resend the latest `PublishStatus` when it did not fit (§M.1). Paho callbacks must catch exceptions (§M.1). Consumers must stop on "closed and empty". The prototype in `~/Embedded` must follow this contract when moved into the repository (DR-11).
+- **Affected.** §E.2, §G.1, §J, §J.1 (DR-11), §K.4, §M.1; `pi/include/vigil/core/BlockingQueue.hpp`, `pi/include/vigil/core/PosixTime.hpp`, `pi/tests/test_blocking_queue.cpp`. No slide changes (slide 68 stays correct).
+- **Sources.** Conversation of 23–28 Nov 2026 (decision-by-decision review; study notes in `~/Embedded/BlockingQueue_NOTES.md`, outside the repository).
+
+#### DEC-019 — `AlarmLogic` contract (slice 1)
+
+- **Problem.** §C.5 and §E.3 say what `AlarmLogic` owns, but not its interface: how events and timeouts enter, what it returns, when the status snapshot is published (including after a reboot), or who holds the "restore the warning after a beep" deadline. §E.2 placed that deadline in `AlarmLogic`, but the beep durations live in `outputs/Tones.hpp` and `AlarmOutputs` already tracks the end of each one-shot.
+- **Current solution.** No `AlarmLogic` in the repository; `IntrusionFsm` (tested) expects `AlarmLogic` to evaluate the guards and the replies.
+- **Decision (David, 28 Nov 2026, choice by choice)** — Status: approved.
+
+  | # | Topic | Choice | Main reason / rejected alternatives |
+  |---|---|---|---|
+  | 1 | Scope | Slice 1 minimal: `IntrusionFsm` + the network state field; fire inactive and power on mains until their FSMs exist | Only code that can be tested now; each slice adds one member. Rejected: full skeleton with empty branches (untestable code, interfaces decided before the FSMs exist); no `AlarmLogic` (rules in the thread) |
+  | 2a | Input | One entry point `handle(const Event&, Time now)`; on a queue timeout the controller passes `Event{}` (`EVT_TICK`). `now` is the processing time; `Event::timestamp` stays for latency measurement | Same shape as `IntrusionFsm`; expired deadlines are always applied before the event. Rejected: separate `onTimeout()` (deadline handling in two places); `step(std::optional<Event>, Time)` |
+  | 2b | Output | `handle()` returns `AlarmActions { DesiredOutputs outputs; std::array<CommCommand, 8> comm; commCount }`; `AlarmLogic` owns an `OutputPolicy` and translates `Feedback` into beep/blink | The thread holds no rule; output scenarios are testable with `AlarmLogic` alone. Rejected: thread calls `OutputPolicy` (a rule in the thread); returning `OutputInputs` |
+  | 3a | Status | Compare the current snapshot with the last one sent; publish only when different; the status is always the last command | Internal changes the app cannot see (exit and entry delay) publish nothing without special cases; later FSMs are covered automatically; keeps "log event → status". `operator==` added for `PublishStatus` and `RecordEvent` (`core/CommCommand.hpp`). Rejected: status per transition (spurious publish on a PIN in EXIT_DELAY, easy to forget); publish on any internal change (would publish EXIT_DELAY) |
+  | 3b | Status after boot | `lastStatus_` starts empty, so the first `handle()` (at most 1 s after the controller starts) publishes the status | Replaces a stale retained status after a reboot (e.g. INTRUSION_ALARM restored as ARMED) with no extra code. Rejected: explicit `initialStatus()` call (extra step to remember); no boot publish (stale retained status) |
+  | 4 | Deadlines | `AlarmLogic::nextDeadline()` = earliest FSM deadline, without the 1 s heartbeat limit. The beep-restore time is held by `AlarmOutputs`, exposed by a new `nextRestore()` query. The controller waits until `min(logic.nextDeadline(), outputs.nextRestore(), now + 1 s)` | One owner for tone durations; `logic` keeps depending on nothing; the warning returns right after the beep. Rejected: rely on the 1 s wake-up (warning or red LED silent for up to ≈ 1 s); restore deadline in `AlarmLogic` (`logic` ↔ `outputs` include cycle, the same end time stored twice) |
+  | 5 | Remote replies | `Reply` postponed until `Protocol` exists (slice 6); `EVT_REMOTE_ARM` changes state and logs, with no reply yet | How `request_id` crosses the `Event` is a slice 6 design question. Rejected: numeric request reference now (decides `CommThread` design early); reply without correlation (useless to the app) |
+  | 6 | Tests | 15 L1 tests for what `AlarmLogic` adds (boot status, status changes and order, outputs, deadlines, door-to-tone scenario); transitions stay covered by the `IntrusionFsm` tests | No duplicated tests; each test proves something only `AlarmLogic` does. Rejected: repeating every intrusion transition; a few long scenario tests (a failure does not name the rule) |
+
+- **SOLID.** S: `AlarmLogic` decides, the controller only schedules, `AlarmOutputs` owns tone timing (choice 4 keeps duration knowledge in one place). D: preserved — choice 4 avoids a `logic` → `outputs` dependency. I: `AlarmOutputs` gains one const query. O: unchanged (rules stay `switch` statements, §F.3).
+- **Consequences.** `AlarmOutputs::nextRestore()` and the controller wake-up rule are added in slice 2, with Ana's agreement (her class). When `Reply` arrives, `handle()` reads the intrusion state before calling the FSM (to tell `OK` from `ALREADY_ARMED`). Test helpers that build a state must discard the boot status.
+- **Affected.** §C.5, §E.2, §E.4, §G.1, §G.2, §J, §K.4, §M.1, §M.2, §M.3, Appendix B; `pi/include/vigil/logic/AlarmLogic.hpp`, `pi/src/logic/AlarmLogic.cpp`, `pi/include/vigil/core/CommCommand.hpp`, `pi/tests/test_alarm_logic.cpp`, `pi/CMakeLists.txt`, `pi/tests/CMakeLists.txt`. Implementation Guide: no change now (its §6 is already marked superseded; Guide v2 takes this contract). No slide changes (the control-loop flowchart's "until the next deadline, at most 1 s" stays true).
+- **Sources.** Conversation of 28 Nov 2026 (decision-by-decision review; study notes in `~/Embedded/AlarmLogic_NOTES.md`, outside the repository).
+
 ### G.3 Earlier decisions D-01…D-51 (Implementation Guide §17, 4 Nov 2026)
 
 | ID | Topic | Status now |
@@ -1041,7 +1093,7 @@ TLS protects each hop separately; the broker can read `cmd` payloads, including 
 
 ---
 
-## J. Implementation status (evidence as of 9 Nov 2026)
+## J. Implementation status (evidence as of 28 Nov 2026)
 
 | Subsystem | Status | Evidence |
 |---|---|---|
@@ -1049,14 +1101,16 @@ TLS protects each hop separately; the broker can read `cmd` payloads, including 
 | Local Mosquitto test broker + `cloud/test-broker.sh` (13 checks) | **Implemented, tested on the laptop** | Scripts and configuration in `cloud/`; used successfully by the 5 Nov prototype demo **[VERIFIED: files; demo results recorded in `staging/threads-class/README.md`]** |
 | EMQX Serverless deployment and ACL | **In progress / unknown** | Guide §3.1 (4 Nov): deployment started, steps A3–A5 probably not done. Not checked now (`secrets/` not opened) |
 | Buildroot configuration and overlay | **Implemented** | `buildroot/configs/`, `buildroot/overlay/` (S40wifi, S99vigil, chrony). A build output folder exists in `~/buildroot/buildroot-2026.08/output/` **[UNVERIFIED: image content and boot on the Pi]**. Pending: BR2_EXTERNAL packages, `config.txt`, `rt-tests`/`stress-ng`, choose Dropbear or OpenSSH |
-| Pi application (`pi/`) | **Not started in the repository** (only `.gitkeep`) | — |
+| Pi application (`pi/`) — `core` (`Time`, `Event`, `CommCommand`, `BlockingQueue`, `PosixTime`), `IntrusionFsm` and `AlarmLogic` (slice 1, DEC-019) | **Implemented, tested (L1, laptop)** | 60/60 GoogleTest cases pass on the laptop (28 Nov): 20 `BlockingQueue`/`PosixTime`, 20 `IntrusionFsm`, 15 `AlarmLogic`, 5 core types. `BlockingQueue` tests also clean under ThreadSanitizer and with 20× repetition. Four `IntrusionFsm` bugs fixed on 28 Nov. **Working tree, not yet committed** on 28 Nov; earlier work in commits `ecdd043`…`922964f` |
+| Pi application — `OutputPolicy`, `AlarmOutputs`, `Tones`, `DebouncedInput` | **Implemented (Ana), compiles; no own tests yet** | Added to `vigil_core` in `pi/CMakeLists.txt` on 28 Nov; the duplicate `OutputInputs` struct was removed from `States.hpp` (the one in `OutputPolicy.hpp` is used). `OutputPolicy` bug fixed on 28 Nov by David (the entry warning played in EXIT_DELAY instead of ENTRY_DELAY); `OutputPolicy` is now covered indirectly by the `AlarmLogic` tests. Ana to be informed |
+| Pi application — threads (`WorkerThread` and the five threads), `main` | **Not started in the repository** (`main` is a placeholder) | A first slice-2 draft exists outside the repository (DR-11) |
 | Laptop prototype `staging/threads-class/` (5 Nov) | **Prototype of the superseded architecture; not committed; not integrated** | 69 unit tests passed and 8 demo checks on the laptop with simulated hardware and Mosquitto (5 Nov). Contains core queues, `WorkerThread`, `NetworkMQTTThread` + `MqttClient` (TLS, Last Will, backoff), `Protocol`, stub controller, `LocalInputThread`, `MQ2SensorThread`, `IRSensorsThread`, `PowerMonitorThread` with a fake INA219, simulated board. `GpioLines` (libgpiod v1) and `Ina219` written but **never compiled** |
-| `AlarmLogic`, storage + outbox, `OutboxPublisher`, `AlarmOutputs`, `HealthMonitor`/watchdog | **Not started** | — |
+| `AlarmLogic` fire, power and PIN parts (slices 3–5), storage + outbox, `OutboxPublisher`, `HealthMonitor`/watchdog | **Not started** | — |
 | `vigil_pwm` driver + overlay | **Not started** (`driver/` empty) | — |
 | Android app | **Not started** (`app/` empty) | A Figma Make prototype exists according to the GUI document **[UNVERIFIED: not in the repository]** |
 | Hardware | **Not assembled, not validated** | Owned: Pi, red LED, RGB LED, speaker, 2 IR, breadboard, microSD. Rest ordered the week of 9 Nov |
 | Design presentation | **88-slide deck (8 Nov) not yet updated** | Phase 4 decided (DEC-013); change plan v1.1 ready (`docs/presentation/DESIGN_DECK_CHANGES.md`, 71 slides); no slide edited yet |
-| Documentation | **Consolidated** (9 Nov; updated 14 Nov) | Master Context v1.3, Guidelines, `CLAUDE.md` (local only since 18 Nov, DEC-017), `README.md`, hardware specification v2, Guide validity box and `docs/archive/` in the repository; mirror under `VigilSystem/` in the Claude Project; old Project documents removed. The Project instructions and the global working rules (`PASTE_IN_TEXTS.md`) were pasted by David (confirmed 14 Nov) |
+| Documentation | **Consolidated** (9 Nov; updated 14, 18 and 28 Nov) | Master Context v1.6, Guidelines v1.3, `CLAUDE.md` (local only since 18 Nov, DEC-017), `README.md`, hardware specification v2, Guide validity box and `docs/archive/` in the repository; mirror under `VigilSystem/` in the Claude Project; old Project documents removed. The Project instructions and the global working rules (`PASTE_IN_TEXTS.md`) were pasted by David (confirmed 14 Nov) |
 
 ### J.1 Discrepancies between code/documents and the approved design
 
@@ -1072,6 +1126,7 @@ TLS protects each hop separately; the broker can read `cmd` payloads, including 
 | DR-8 | Implementation Guide (§6.6, §10.4/§10.7 ordering, app texts table) still has `ALARM_SILENCED (INTRUSION)` | **Resolved 2026-11-14:** the references are marked as removed in the Guide (validity box note added); `DESIGN_DECK_CHANGES.md` v1.2 lists the slide actions |
 | DR-9 | Repository configuration still uses the shared users `vigil-device` / `vigil-app` and only `home1` (DEC-015): `cloud/emqx/acl-rules.md`, `cloud/mosquitto/acl` and `passwd`, `cloud/README.md`, `cloud/emqx/emqx.env.example`, `cloud/test-broker.sh` (no cross-home check), `buildroot/overlay/etc/vigil/broker.conf.example` (`client_id` and `username` written in it), and the files in `secrets/` | Separate implementation batch: rename the users to `vigil-device-home1` / `vigil-app-home1`, add `home2` test users for the AT-16 isolation case, regenerate the Mosquitto `passwd` (needs the passwords in `secrets/`, done by David), update the EMQX console. Left unchanged on 14 Nov so the working test broker is not broken |
 | DR-10 | Implementation Guide §10.1–§10.3, §11 and §13 describe one home with shared users | Validity box note added 2026-11-14 (DEC-015) |
+| DR-11 | A first slice-2 draft written on 23 Nov outside the repository (`~/Embedded`: `WorkerThread`, `AlarmControllerThread`, `SafetySensorsThread` and their tests) uses an older queue API (`popFor`, `size()`, signal after unlocking) | Rewrite it in the repository against the DEC-018 contract, decision by decision, as was done for `BlockingQueue` |
 
 ---
 
@@ -1127,6 +1182,7 @@ Every Analysis requirement is covered by at least one acceptance test. The full 
 ### K.4 Results so far and limitations
 
 - **No acceptance test has been run.** The only results are the 69 laptop unit tests and 8 demo checks of the superseded-architecture prototype (5 Nov); they are not acceptance evidence.
+- **L1 in the repository (28 Nov):** 60/60 GoogleTest cases pass on the laptop (`BlockingQueue`/`PosixTime` 20, `IntrusionFsm` 20, `AlarmLogic` 15, core types 5). The `BlockingQueue` tests are also clean under ThreadSanitizer and with 20× repetition (4 in parallel). Nothing has run on the Pi yet. Not unit-testable by design (DEC-018): that the mutex really has priority inheritance and the condition variable really uses `CLOCK_MONOTONIC`.
 - AT-19 is feasible only at L2 (a libgpiod read failure cannot easily be caused on the Pi).
 - AT-18 needs a way to block one thread in a test build (for example a signal enabled only in that build).
 - AT-12 doubles as the verification of the safe-state condition (HAT cuts and restores power).
@@ -1192,7 +1248,8 @@ Reported by David: SOLID is mandatory; no particular kind of driver is valued mo
 | Presentation | Execute `DESIGN_DECK_CHANGES.md` (71 slides) in batches; Claude drafts diagrams D1–D30 in draw.io | David's authorization of each batch (DEC-013, P4-9) |
 | Presentation | Upload the 88-slide deck to the Project; export a new PDF to `docs/design/` | David |
 | Hardware | Order the parts (week of 9 Nov); measure the IR output now; on arrival test the HAT first (`0x42`, current sign, cut/restore at discharge); breadboard bring-up; protoboard; enclosure | Purchases |
-| Software | Refactor the prototype into the approved structure (DR-1, DR-2); `AlarmLogic` with L1 tests; `EventStore`/`PinStore`/outbox; `MqttLink`/`OutboxPublisher`/`Protocol`; `OutputPolicy`/`AlarmOutputs`; `HealthMonitor`/`Watchdog`/`main` | Guide v2 sections |
+| Software | `AlarmControllerThread` resends the latest `PublishStatus` when the CommQueue refused it; Paho callbacks catch exceptions from the queues (both DEC-018); `AlarmOutputs::nextRestore()` and the controller wake-up at `min(logic.nextDeadline(), outputs.nextRestore(), now + 1 s)` (DEC-019) | Slice 2 (controller; `AlarmOutputs` with Ana); slice 6 (MQTT) |
+| Software | Refactor the prototype into the approved structure (DR-1, DR-2, DR-11); `AlarmLogic` fire, PIN and power parts with L1 tests (slices 3–5); `Reply` (slice 6, DEC-019); `EventStore`/`PinStore`/outbox; `MqttLink`/`OutboxPublisher`/`Protocol`; `OutputPolicy`/`AlarmOutputs`; `HealthMonitor`/`Watchdog`/`main` | Guide v2 sections |
 | Driver | Overlay + `probe()` + constant tone first; then the sequence player and its tests | Pi + speaker (owned) |
 | Platform | BR2_EXTERNAL packages, `config.txt`, `rt-tests`/`stress-ng`, one SSH server, root password | — |
 | Cloud | Update the repository configuration for DEC-015 (DR-9); finish EMQX (users `vigil-device-home1` / `vigil-app-home1`, 12 rules + deny-all; check the user and rule limits, N-13) and run `test-broker.sh` against it, including the cross-home case of AT-16 | David (passwords in `secrets/`) |
@@ -1203,12 +1260,15 @@ Reported by David: SOLID is mandatory; no particular kind of driver is valued mo
 
 1. Authorization of each deck-editing batch and each diagram draft (DEC-013, P4-8/P4-9).
 2. Implementation roadmap update (Guide §19 is obsolete). The Gantt slide stays as it is (DEC-013).
+3. Ana's agreement on the two changes to her area from DEC-019: the `OutputPolicy` fix (entry warning in ENTRY_DELAY, already applied) and the new `AlarmOutputs::nextRestore()` query (slice 2).
 
 ### M.3 Suggestions (not approved)
 
 - Add a private git remote (backup, and access for Ana).
 - Ask Ana to review DEC-001…DEC-013 and this document.
 - Re-plan the implementation milestones against the Gantt (implementation until ≈ 27 Dec 2026, verification ≈ 1–15 Jan 2027).
+- Add `-Werror=unused-value -Werror=implicit-fallthrough` to the compile options: these two warnings pointed at two of the four `IntrusionFsm` bugs fixed on 28 Nov.
+- For slice 6: carry a command's `request_id` through the EventQueue as a small numeric reference (`std::uint32_t requestRef`), with `CommThread` keeping the table reference → `request_id`, so `Event` stays small and allocation-free (raised during DEC-019, choice 5; not decided).
 
 ### M.4 Work split by slice (18 Nov 2026)
 
@@ -1245,6 +1305,7 @@ The implementation is built in vertical slices. Each slice ends at an integratio
 | N-12 | EMQX deployment state; does the Buildroot image boot? | Not checked | Check |
 | N-13 | EMQX Serverless limits on the number of users and authorization rules (how many homes one deployment holds) | Not verified (DEC-015); free-tier share per home ≈ 13 % is an estimate | Check in the EMQX console when finishing the deployment |
 | N-14 | Maximum session expiry EMQX Serverless grants to MQTT 5 clients; does `mqtt5_client` expose the granted value from CONNACK? | Not verified (DEC-016) | Check in the first app connection test against EMQX |
+| N-15 | Duplicate enums with the same values: `FireStatus` / `PowerStatus` (`core/CommCommand.hpp`, status snapshot) and `FireState` / `PowerSource` (`logic/States.hpp`, logic and `OutputPolicy`) | Found on 28 Nov; both compile side by side | Decide with Ana whether to keep one pair |
 
 ### N.2 Unverified assumptions
 
@@ -1331,7 +1392,7 @@ VigilSystem/                                  (repository = canonical copy; Clau
 | `event_id` | `EVENT_LOG.id` |
 | `home_id` | Identifier of one home in `vigil.conf` (default `home1`); used in the topics `vigil/<home_id>/…` and the MQTT usernames (DEC-015) |
 | Safe state | Below 6.4 V: SHUTDOWN alert, database closed, system keeps running until the HAT cuts power |
-| Deadline | A point in time held by `AlarmLogic` (exit, entry, silence, lockout, warning restore) |
+| Deadline | A point in time held by `AlarmLogic` (exit, entry, silence, lockout) or by `AlarmOutputs` (warning restore after a beep, DEC-019) |
 | Composition root | `main()`, where real or simulated objects are created and injected |
 | Degraded mode | Running with a failed component after one FAULT alert |
 | Last Will | Message the broker publishes when the Pi disappears without a normal disconnect |
@@ -1348,3 +1409,5 @@ VigilSystem/                                  (repository = canonical copy; Clau
 | 1.3 | 2026-11-14 | DEC-015 (Pi and broker ready for several homes, app for one home): header, §0.3, §A.3, §B.7, §C.3, §E.3, §E.7, §E.8, §G.1, §G.2, §G.3 (D-20, D-40), §I.1–§I.3, §I.7, §I.8, §J.1 (DR-9, DR-10), §K.2 (AT-16), §L.5, §M.1, §N.1 (N-13), Appendix B. Implementation Guide validity box and `DESIGN_DECK_CHANGES.md` v1.3 updated in the same batch. Stale version references corrected the same day in §J (Documentation row: v1.1 → v1.3) and §L.4 (`DESIGN_DECK_CHANGES.md` v1.1 → v1.3); pasting of the Project instructions and global working rules marked done in §J, §J.1 (DR-5) and §M.1 (confirmed by David) | David |
 | 1.4 | 2026-11-14 | DEC-016 (app MQTT session handling: subscribe after every CONNACK; 7 days requested, granted value used): header, §0.3, §G.1, §G.2, §I.2, §I.5, §N.1 (N-14) | David |
 | 1.5 | 2026-11-18 | DEC-017 (`CLAUDE.md` removed from git, kept local): header, §G.1, §J (Documentation row), Appendix A. `README.md` and `VIGILSYSTEM_GUIDELINES.md` v1.2 updated in the same batch. New §M.4 (work split by slice between David and Ana) | David |
+| 1.6 | 2026-11-28 | DEC-018 (`BlockingQueue` contract and implementation): header, §0.3, §E.2, §G.1, §G.2, §J (status as of 28 Nov: `core`, `IntrusionFsm`, Ana's output and device classes, threads), §J.1 (DR-11), §K.4 (L1 results), §M.1, §M.3 (`-Werror` suggestion), §N.1 (N-15). `VIGILSYSTEM_GUIDELINES.md` v1.3 updated in the same batch (§6: namespace style, no document references in code comments) | David |
+| 1.7 | 2026-11-28 | DEC-019 (`AlarmLogic` contract, slice 1): header, §0.3, §C.5, §E.2, §E.4, §G.1, §G.2, §J (`AlarmLogic` implemented; `OutputPolicy` fix), §K.4 (60/60), §M.1, §M.2 (Ana's agreement), §M.3 (`requestRef` suggestion), Appendix B | David |

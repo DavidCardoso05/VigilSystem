@@ -6,11 +6,11 @@
 
 namespace vigil {
 
-    class IGpioOutput {
-    public:
-        virtual ~IGpioOutput() = default;
+class IGpioOutput {
+public:
+    virtual ~IGpioOutput() = default;
 
-        virtual void write(Level level) = 0;
-    };
+    virtual void write(Level level) = 0;
+};
 
-} // namespace vigil
+}  // namespace vigil

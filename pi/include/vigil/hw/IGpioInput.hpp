@@ -7,14 +7,14 @@
 
 namespace vigil {
 
-    enum class Level : std::uint8_t { LOW, HIGH };
+enum class Level : std::uint8_t { LOW, HIGH };
 
-    class IGpioInput {
-    public:
-        virtual ~IGpioInput() = default;
+class IGpioInput {
+public:
+    virtual ~IGpioInput() = default;
 
-        // Current level of the line.
-        virtual Level read() = 0;
-    };
+    // Current level of the line.
+    virtual Level read() = 0;
+};
 
-} // namespace vigil
+}  // namespace vigil

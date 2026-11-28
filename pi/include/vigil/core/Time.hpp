@@ -6,8 +6,8 @@
 #include <chrono>
 
 namespace vigil {
-    using Clock = std::chrono::steady_clock; //monoatomic clock
+using Clock = std::chrono::steady_clock; //monoatomic clock
 
-    using Time = Clock::time_point;
-    using Duration = std::chrono::milliseconds;
-} //namespace vigil
+using Time = Clock::time_point;
+using Duration = std::chrono::milliseconds;
+}  // namespace vigil

@@ -18,36 +18,36 @@
 
 namespace vigil {
 
-    struct DebouncedInputConfig {
-        unsigned confirmSamples = 2;           // consecutive reads needed (0 is treated as 1)
-        Level activeLevel = Level::LOW;        // level that means "active"
-        Duration warmup{0};                    // from the first sample() call
-    };
+struct DebouncedInputConfig {
+    unsigned confirmSamples = 2;           // consecutive reads needed (0 is treated as 1)
+    Level activeLevel = Level::LOW;        // level that means "active"
+    Duration warmup{0};                    // from the first sample() call
+};
 
-    enum class InputEdge : std::uint8_t { NONE, ACTIVATED, DEACTIVATED };
+enum class InputEdge : std::uint8_t { NONE, ACTIVATED, DEACTIVATED };
 
-    class DebouncedInput {
-    public:
-        DebouncedInput(IGpioInput& line, DebouncedInputConfig config);
+class DebouncedInput {
+public:
+    DebouncedInput(IGpioInput& line, DebouncedInputConfig config);
 
-        // Reads the line once (unless still warming up) and reports a confirmed change.
-        InputEdge sample(Time now);
+    // Reads the line once (unless still warming up) and reports a confirmed change.
+    InputEdge sample(Time now);
 
-        // Confirmed state. Meaningful only when ready().
-        bool active() const { return active_; }
+    // Confirmed state. Meaningful only when ready().
+    bool active() const { return active_; }
 
-        // True once the baseline has been taken (warm-up over, first reading done).
-        bool ready() const { return baselined_; }
+    // True once the baseline has been taken (warm-up over, first reading done).
+    bool ready() const { return baselined_; }
 
-    private:
-        IGpioInput& line_;
-        DebouncedInputConfig config_;
+private:
+    IGpioInput& line_;
+    DebouncedInputConfig config_;
 
-        bool started_ = false;
-        Time start_{};
-        bool baselined_ = false;
-        bool active_ = false;
-        unsigned pending_ = 0;   // consecutive reads that differ from the confirmed state
-    };
+    bool started_ = false;
+    Time start_{};
+    bool baselined_ = false;
+    bool active_ = false;
+    unsigned pending_ = 0;   // consecutive reads that differ from the confirmed state
+};
 
-} // namespace vigil
+}  // namespace vigil

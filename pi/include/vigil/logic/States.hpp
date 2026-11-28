@@ -22,13 +22,7 @@ enum class FireState : std::uint8_t { NORMAL, FIRE_ALARM, SILENCED };
 
 enum class PowerSource : std::uint8_t { GRID, BATTERY };
 
-// Everything OutputPolicy needs to compute the desired outputs.
-struct OutputInputs {
-    IntrusionState intrusion;
-    FireStatus fire;
-    PowerStatus power;
-    bool brokerConnected;
-};
+// OutputInputs (what OutputPolicy needs) is defined in vigil/logic/OutputPolicy.hpp.
 
 struct IntrusionConfig {
     Duration exitDelay{60000};
